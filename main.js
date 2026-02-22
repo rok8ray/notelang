@@ -40,17 +40,30 @@ window.NoteLang = {
   
   startLoop: function() {
     const { renderer, scene, camera } = this.variables;
+
     if (renderer) {
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      document.body.appendChild(renderer.domElement);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        // Set a background color so we know the renderer is alive
+        renderer.setClearColor(0x222222); 
+        document.body.appendChild(renderer.domElement);
     }
+
+    if (camera) {
+        // Move the camera back and up
+        camera.position.set(0, 5, 10);
+        camera.lookAt(0, 0, 0);
+    }
+
     const anim = () => {
-      requestAnimationFrame(anim);
-      this.updatables.forEach(f => f());
-      if (renderer && scene && camera) renderer.render(scene, camera);
+        requestAnimationFrame(anim);
+        this.updatables.forEach(f => f());
+        if (renderer && scene && camera) {
+            renderer.render(scene, camera);
+        }
     };
     anim();
-  },
+    this.print("Renderer attached and loop started.");
+  }
 
   lexer: function(code) {
     // This regex is smarter: it ignores comments starting with //
