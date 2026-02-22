@@ -1,108 +1,96 @@
 /**
- * NoteLang.js - Fully Globalized Edition
+ * NoteLang.js - Game Engine Edition
+ * GitHub: https://rok8ray.github.io/notelang/main.js
  */
 
 window.NoteLang = {
-  // 1. Storage for variables and instances
   variables: {},
+  updatables: [], // Functions that run every frame
 
-  // --- GLOBAL COMMAND METHODS ---
-  // These can be called directly: NoteLang.print("Hello")
-  
+  // --- COMMAND METHODS ---
+
   print: function(value) {
-    const val = this.resolvePath(value);
-    console.log("%c[NoteLang Output]:", "color: #00dbde; font-weight: bold;", val);
+    console.log("%c[NoteLang]:", "color: #00dbde; font-weight: bold;", this.resolvePath(value));
   },
 
   set: function(varName, value) {
     this.variables[varName] = this.resolvePath(value);
   },
 
-  create: function(className, varName) {
+  // Optimized Create: Supports arguments like "create THREE.BoxGeometry 1 1 1 as geo"
+  create: function(className, ...args) {
+    const varName = args.pop(); // Last item is the 'as name'
+    if (args[0] === 'as') args.shift(); // Remove 'as' if present
+
     const Constructor = this.resolvePath(className);
     if (typeof Constructor === 'function') {
-      this.variables[varName] = new Constructor();
-      console.log(`NoteLang: Created instance of ${className} as ${varName}`);
-    } else {
-      console.error(`NoteLang: ${className} is not a valid constructor.`);
+      // Convert string args to numbers if they are numeric
+      const finalArgs = args.map(a => !isNaN(a) ? Number(a) : this.resolvePath(a));
+      this.variables[varName] = new Constructor(...finalArgs);
+      return this.variables[varName];
     }
   },
 
-  call: function(methodPath, argument) {
+  call: function(methodPath, ...args) {
     const func = this.resolvePath(methodPath);
-    const arg = this.resolvePath(argument);
     if (typeof func === 'function') {
-      // Find the 'context' (e.g., if calling console.log, context is console)
       const parts = methodPath.split('.');
       const context = parts.length > 1 ? this.resolvePath(parts.slice(0, -1).join('.')) : window;
-      func.call(context, arg);
+      const resolvedArgs = args.map(a => this.resolvePath(a));
+      return func.apply(context, resolvedArgs);
     }
   },
-  // Add these inside window.NoteLang = { ... }
 
-// 1. Storage for game objects that need updating
-updatables: [],
+  // --- GAME ENGINE METHODS ---
 
-// 2. The Logic to run every frame
-startLoop: function() {
+  onUpdate: function(fnName) {
+    const fn = this.resolvePath(fnName);
+    if (typeof fn === 'function') this.updatables.push(fn);
+  },
+
+  startLoop: function() {
+    const { renderer, scene, camera } = this.variables;
+
+    if (renderer) {
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.body.appendChild(renderer.domElement);
+    }
+    if (camera) camera.position.set(0, 2, 5);
+
     const animate = () => {
-        requestAnimationFrame(animate);
-        
-        // Run any logic assigned to 'updatables'
-        this.updatables.forEach(fn => fn());
-        
-        // If there's a renderer and scene, render it
-        if (this.variables.renderer && this.variables.scene && this.variables.camera) {
-            this.variables.renderer.render(this.variables.scene, this.variables.camera);
-        }
+      requestAnimationFrame(animate);
+      
+      // Run game logic
+      this.updatables.forEach(fn => fn());
+
+      // Render the 3D frame
+      if (renderer && scene && camera) {
+        renderer.render(scene, camera);
+      }
     };
     animate();
-},
+    this.print("Engine Heartbeat Started");
+  },
 
-// 3. Command to add custom JS logic via your language
-// Usage: onUpdate "playerLogic"
-onUpdate: function(functionName) {
-    const fn = this.resolvePath(functionName);
-    if (typeof fn === 'function') {
-        this.updatables.push(fn);
-    }
-}
-  
-  // --- ENGINE CORE ---
+  // --- CORE SYSTEM ---
 
   lexer: function(code) {
+    // Regex updated to handle arguments and spaces better
     const regex = /([a-zA-Z0-9_.]+)|(\()|(\))|(".*?")|(\+|-|\*|\/|=)/g;
     return code.match(regex) || [];
   },
 
   resolvePath: function(path) {
     if (path === undefined || path === null) return null;
-    
-    // If it's already an object or number (not a string), return it
     if (typeof path !== 'string') return path;
-
-    // Handle Strings: "Hello"
-    if (path.startsWith('"') && path.endsWith('"')) {
-      return path.substring(1, path.length - 1);
-    }
-    
-    // Handle Numbers
+    if (path.startsWith('"')) return path.substring(1, path.length - 1);
     if (path !== "" && !isNaN(path)) return Number(path);
+    if (this.variables[path] !== undefined) return this.variables[path];
 
-    // Check internal variables
-    if (this.variables[path] !== undefined) {
-      return this.variables[path];
-    }
-
-    // Check Global JS Environment (window)
     let current = window;
-    const parts = path.split('.');
-    for (const part of parts) {
-      if (current[part] !== undefined) {
-        current = current[part];
-      } else {
-        return path; // Return as raw string if path doesn't exist
-      }
+    for (const part of path.split('.')) {
+      if (current[part] !== undefined) current = current[part];
+      else return path;
     }
     return current;
   },
@@ -111,20 +99,21 @@ onUpdate: function(functionName) {
     for (let i = 0; i < tokens.length; i++) {
       let token = tokens[i];
 
-      if (token === 'print') {
-        this.print(tokens[++i]);
-      } 
+      if (token === 'print') this.print(tokens[++i]);
       else if (token === 'set') {
-        let varName = tokens[++i];
-        i++; // skip '='
-        this.set(varName, tokens[++i]);
-      } 
+        let name = tokens[++i]; i++; // skip =
+        this.set(name, tokens[++i]);
+      }
       else if (token === 'create') {
-        let className = tokens[++i];
+        let cls = tokens[++i];
+        let args = [];
+        while (tokens[i+1] !== 'as' && i + 1 < tokens.length) {
+          args.push(tokens[++i]);
+        }
         i++; // skip 'as'
-        let varName = tokens[++i];
-        this.create(className, varName);
-      } 
+        let name = tokens[++i];
+        this.create(cls, ...args, name);
+      }
       else if (token === 'call') {
         let method = tokens[++i];
         let arg = tokens[++i];
@@ -133,24 +122,15 @@ onUpdate: function(functionName) {
     }
   },
 
-  // Runs raw string code
-  run: function(rawCode) {
-    const tokens = this.lexer(rawCode);
-    this.interpret(tokens);
+  run: function(code) {
+    this.interpret(this.lexer(code));
   },
 
-  // Scans HTML for <script type="text/mylang">
   init: function() {
-    const scripts = document.querySelectorAll('script[type="text/mylang"]');
-    scripts.forEach(script => {
-      this.run(script.textContent.trim());
+    document.querySelectorAll('script[type="text/mylang"]').forEach(s => {
+      this.run(s.textContent.trim());
     });
   }
 };
 
-// Auto-run when the DOM is ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => window.NoteLang.init());
-} else {
-  window.NoteLang.init();
-}
+window.addEventListener('DOMContentLoaded', () => NoteLang.init());
