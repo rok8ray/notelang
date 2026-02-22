@@ -38,7 +38,36 @@ window.NoteLang = {
       func.call(context, arg);
     }
   },
+  // Add these inside window.NoteLang = { ... }
 
+// 1. Storage for game objects that need updating
+updatables: [],
+
+// 2. The Logic to run every frame
+startLoop: function() {
+    const animate = () => {
+        requestAnimationFrame(animate);
+        
+        // Run any logic assigned to 'updatables'
+        this.updatables.forEach(fn => fn());
+        
+        // If there's a renderer and scene, render it
+        if (this.variables.renderer && this.variables.scene && this.variables.camera) {
+            this.variables.renderer.render(this.variables.scene, this.variables.camera);
+        }
+    };
+    animate();
+},
+
+// 3. Command to add custom JS logic via your language
+// Usage: onUpdate "playerLogic"
+onUpdate: function(functionName) {
+    const fn = this.resolvePath(functionName);
+    if (typeof fn === 'function') {
+        this.updatables.push(fn);
+    }
+}
+  
   // --- ENGINE CORE ---
 
   lexer: function(code) {
